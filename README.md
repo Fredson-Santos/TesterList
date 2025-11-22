@@ -9,7 +9,8 @@ Bot Telegram que monitora canais, detecta e testa automaticamente listas IPTV, s
 - ✅ Testa listas IPTV (Xtream Codes)
 - ✅ Extrai credenciais e informações da conta
 - ✅ Salva dados em CSV
-- ✅ Envia notificações para webhook N8N (opcional)
+- ✅ **Envia listas extraídas para webhook N8N em tempo real** 🔗
+- ✅ Envia notificações com detalhes das listas testadas
 - ✅ Filtro de palavras-chave e palavras bloqueadas
 - ✅ Persistência de dados
 - ✅ Logs estruturados
@@ -145,33 +146,102 @@ Testador-Docker/
 ├── .env.example           # Exemplo de variáveis
 ├── .dockerignore          # Arquivos ignorados na build
 ├── telegram_iptv_bot.py   # Aplicação principal
-└── README.md              # Este arquivo
+├── manage.sh/bat          # Scripts de gerenciamento
+├── build.sh/bat           # Scripts de build
+├── README.md              # Este arquivo
+├── INSTALACAO_PORTAINER.md # Guia Portainer
+├── CONFIGURACOES_AVANCADAS.md # Configurações avançadas
+└── RESUMO.md              # Resumo executivo
 ```
 
-## 📊 Dados Persistentes
+## 🔗 Integração com Webhook N8N
+
+A aplicação **envia automaticamente** para seu webhook N8N sempre que:
+
+1. **Uma lista IPTV é extraída** do Telegram
+2. **Um documento M3U é recebido** no canal
+3. **Uma lista é testada com sucesso** (com credenciais válidas)
+
+### Dados Enviados para Webhook
+
+```json
+{
+  "timestamp": "2025-11-22T14:30:45.123456",
+  "tipo": "lista_iptv_extraida",
+  "arquivo": "lista_20251122_143045.m3u",
+  "canal_origem": "listasextrator",
+  "conteudo": "# M3U da lista...",
+  "total_canais": 245,
+  "servidor": "example.com",
+  "porta": 8080,
+  "username": "usuario123",
+  "password": "senha123",
+  "status": "active",
+  "data_vencimento": "2025-12-31"
+}
+```
+
+### Configurar Webhook
+
+No arquivo `.env`:
+
+```env
+# URL do seu webhook N8N
+WEBHOOK_URL=https://n8n.conekta.tech/webhook/whebhook1
+
+# Timeout para requisições (segundos)
+WEBHOOK_TIMEOUT=30
+```
+
+### Exemplo: Receber no N8N
+
+1. Crie um webhook trigger no N8N
+2. Configure a URL
+3. A aplicação Docker enviará POST automáticamente
+4. Você pode processar os dados (salvar BD, enviar email, etc)
+
+## 📂 Estrutura de Dados Persistentes
 
 Os dados do bot são salvos em `/app/data`:
 
-- `listas_iptv_validas.csv` - Listas IPTV testadas e válidas
-- `session_iptv_bot` - Sessão Telethon do bot
-- `bot.log` - Logs de execução
+```
+/app/data/
+├── lists/                  # Listas M3U extraídas
+│   ├── lista_20251122_143045.m3u
+│   └── lista_20251122_150000.m3u
+├── listas_iptv_validas.csv # Registro de todas as listas testadas
+├── session_iptv_bot        # Sessão Telethon (autenticação)
+├── bot.log                 # Logs de execução
+└── sessions/               # Outras sessões
+```
 
 Com Docker Compose, estes dados são salvos em um named volume `telegram_iptv_data`.
 
 ## 🔍 Consultar Dados
 
-Para acessar os arquivos CSV gerados:
+Para acessar os arquivos gerados e verificar o envio para webhook:
 
 ```bash
-# Ver logs
-docker logs telegram-iptv-bot
+# Ver logs (incluindo envios para webhook)
+docker logs -f telegram-iptv-bot
 
-# Copiar CSV do container
-docker cp telegram-iptv-bot:/app/data/listas_iptv_validas.csv ./
+# Copiar listas extraídas do container
+docker cp telegram-iptv-bot:/app/data/lists/ ./
 
 # Acessar dentro do container
 docker exec -it telegram-iptv-bot bash
-cat /app/data/listas_iptv_validas.csv
+ls -la /app/data/lists/
+cat /app/data/bot.log | grep webhook
+```
+
+### Monitorar Envios para Webhook
+
+No arquivo de logs, procure por mensagens como:
+
+```
+✅ Enviado para webhook: lista_20251122_143045.m3u
+❌ Erro webhook (500): Internal Server Error
+⏱️ Timeout ao enviar para webhook (>30s)
 ```
 
 ## 🧹 Limpeza
@@ -223,21 +293,46 @@ docker run -d --name telegram-iptv-bot ... (ver seção "Executar container")
 - Verifique `API_ID` e `API_HASH` em `https://my.telegram.org/apps`
 - Certifique-se que os canais em `CANAL_ORIGEM` existem
 
-### CSV não é gerado
-- Verifique se o volume `/app/data` está montado
-- Verifique logs: `docker logs telegram-iptv-bot`
+### Listas não são extraídas
+- Verifique se mensagens chegam ao canal configurado
+- Confirme permissões do bot no canal
+- Veja logs: `docker logs telegram-iptv-bot`
 
-### Links M3U não são detectados
-- Verifique se a mensagem é enviada para um dos canais configurados
-- Confirme que `TESTAR_AUTOMATICO=true`
+### Webhook não recebe dados
+- Verifique se `WEBHOOK_URL` está correto
+- Teste a URL manualmente: `curl -X POST https://seu-webhook.com -d '{"test":true}'`
+- Verifique firewall/acesso de rede
+- Aumente `WEBHOOK_TIMEOUT` se a resposta é lenta
 
-### Falta permissão para escrever no CSV
+### Falta permissão para salvar arquivos
 - Verifique permissões do volume Docker
 - Recrie volume: `docker volume rm telegram_iptv_data`
+
+### Logs mostram "Timeout ao enviar webhook"
+- Seu webhook está respondendo lentamente
+- Aumente `WEBHOOK_TIMEOUT` (padrão: 30s)
+- Verifique saúde do seu endpoint N8N
 
 ## 📞 Suporte
 
 Para issues e sugestões, entre em contato via Telegram.
+
+## 🔄 Fluxo de Funcionamento
+
+```
+Canal Telegram
+      ↓
+   Bot recebe mensagem/arquivo
+      ↓
+   Processa lista M3U
+      ↓
+   Salva em /app/data/lists/
+      ↓
+   POST → Webhook N8N
+      ↓
+   N8N processa dados
+   (salva BD, envia email, etc)
+```
 
 ## 📄 Licença
 
@@ -245,4 +340,4 @@ Este projeto é fornecido como está.
 
 ---
 
-**Desenvolvido para teste e monitoramento de listas IPTV via Telegram Bot**
+**Desenvolvido para extrair e monitorar listas IPTV via Telegram Bot com integração N8N** 🚀
