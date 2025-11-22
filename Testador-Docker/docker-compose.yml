@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  telegram-iptv-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-iptv-bot
+    restart: unless-stopped
+    environment:
+      # Credenciais do Telegram - OBRIGATÓRIO
+      API_ID: ${API_ID}
+      API_HASH: ${API_HASH}
+      
+      # Canais de origem para monitorar - OBRIGATÓRIO
+      # Formato: "canal1, canal2, canal3" ou IDs numéricos
+      CANAL_ORIGEM: ${CANAL_ORIGEM}
+      
+      # Testar automaticamente links M3U encontrados
+      TESTAR_AUTOMATICO: ${TESTAR_AUTOMATICO:-true}
+      
+      # Palavras-chave para filtrar mensagens (opcional)
+      # Formato: "palavra1, palavra2, palavra3"
+      PALAVRAS_CHAVE: ${PALAVRAS_CHAVE}
+      
+      # Palavras bloqueadas para ignorar mensagens (opcional)
+      # Formato: "palavra1, palavra2, palavra3"
+      PALAVRAS_BLOQUEADAS: ${PALAVRAS_BLOQUEADAS}
+      
+      # Substituições de palavras (opcional)
+      # Formato: "original1:nova1, original2:nova2"
+      SUBSTITUICOES: ${SUBSTITUICOES}
+      
+      # Timeout para testes IPTV (em segundos)
+      IPTV_TIMEOUT: ${IPTV_TIMEOUT:-15}
+      
+      # URL do webhook N8N para notificações (opcional)
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      
+      # Timeout para requisições webhook (em segundos)
+      WEBHOOK_TIMEOUT: ${WEBHOOK_TIMEOUT:-30}
+    
+    volumes:
+      # Volume para dados persistentes (CSV, sessão do bot)
+      - telegram_iptv_data:/app/data
+      # Arquivo .env do host (opcional, para desenvolvimento)
+      # - ./.env:/app/.env:ro
+    
+    # Logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Labels para Portainer
+    labels:
+      - "com.example.description=Bot Telegram para testar e monitorar listas IPTV"
+      - "com.example.version=1.0"
+
+volumes:
+  telegram_iptv_data:
+    driver: local
