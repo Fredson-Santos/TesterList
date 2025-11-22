@@ -8,24 +8,30 @@ Detecta links M3U nas mensagens, testa e salva no CSV
 import os
 import re
 import asyncio
+import logging
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
 import requests
 import json
 import time
 import csv
-import logging
+import aiohttp
 from typing import Dict, Optional, List
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
+from pathlib import Path
 
 # Carregar variáveis do .env
 load_dotenv()
 
 # Diretório de dados
 DATA_DIR = os.getenv('DATA_DIR', '/app/data')
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR, exist_ok=True)
+SESSIONS_DIR = os.path.join(DATA_DIR, 'sessions')
+LISTS_DIR = os.path.join(DATA_DIR, 'lists')
+
+for directory in [DATA_DIR, SESSIONS_DIR, LISTS_DIR]:
+    if not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
 
 # Configurar logging
 log_file = os.path.join(DATA_DIR, 'bot.log')
@@ -527,39 +533,92 @@ async def handler(event):
                     print(f"[AVISO] Falha ao enviar para webhook (lista salva no CSV)")
 
 
-def iniciar_bot():
-    """Inicia o bot e monitora mensagens"""
-    while True:
-        try:
-            print("="*60)
-            print("BOT TELEGRAM -> TESTADOR IPTV (DOCKER)")
-            print("="*60)
-            print(f"\nBot iniciado. Monitorando mensagens...")
-            print(f"Canais de origem: {config.canais_origem}")
-            print(f"Testar automaticamente: {config.testar_automatico}")
-            print(f"Arquivo CSV: {CSV_FILE}")
-            if config.webhook_url:
-                print(f"Webhook N8N: {config.webhook_url}")
-            else:
-                print(f"Webhook N8N: Não configurado")
-            if config.palavras_chave:
-                print(f"Palavras-chave: {config.palavras_chave}")
-            if config.palavras_bloqueadas:
-                print(f"Palavras bloqueadas: {config.palavras_bloqueadas}")
-            if config.substituicoes:
-                print(f"Substituições configuradas: {config.substituicoes}")
-            print("\nBot rodando em container Docker\n")
-            
-            with client:
-                client.run_until_disconnected()
-        except KeyboardInterrupt:
-            print("\n[INFO] Bot interrompido pelo usuário")
-            break
-        except Exception as e:
-            print(f"[ERRO] O bot parou devido a: {e}")
-            print("Tentando reiniciar em 10 segundos...")
-            time.sleep(10)
+async def enviar_para_webhook(nome_arquivo, conteudo):
+    """Envia a lista extraída para o webhook N8N"""
+    if not config.webhook_url:
+        logger.warning("⚠️ WEBHOOK_URL não configurada. Pulando envio.")
+        return False
+    
+    try:
+        payload = {
+            "timestamp": datetime.now().isoformat(),
+            "arquivo": nome_arquivo,
+            "conteudo": conteudo,
+            "canal_origem": config.canais_origem
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                config.webhook_url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=config.webhook_timeout)
+            ) as response:
+                if response.status == 200:
+                    logger.info(f"✅ Enviado para webhook: {nome_arquivo}")
+                    return True
+                else:
+                    logger.error(f"❌ Erro webhook ({response.status}): {await response.text()}")
+                    return False
+    except asyncio.TimeoutError:
+        logger.error(f"⏱️ Timeout ao enviar para webhook (>{config.webhook_timeout}s)")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Erro ao enviar webhook: {e}")
+        return False
 
+async def processar_mensagem(message):
+    """Processa mensagens do canal"""
+    try:
+        if not message.text and not message.document:
+            return
+        
+        # Processa mensagens de texto com listas IPTV
+        if message.text:
+            conteudo = message.text
+            
+            # Detecta formato (m3u, txt, etc)
+            if conteudo.strip().startswith('#EXTM3U') or 'http' in conteudo:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                nome_arquivo = f"lista_{timestamp}.m3u"
+                caminho = os.path.join(LISTS_DIR, nome_arquivo)
+                
+                # Salva localmente
+                with open(caminho, 'w', encoding='utf-8') as f:
+                    f.write(conteudo)
+                
+                logger.info(f"💾 Salvo: {nome_arquivo}")
+                
+                # Envia para webhook
+                await enviar_para_webhook(nome_arquivo, conteudo)
+        
+        # Processa documentos (arquivos .m3u, .txt)
+        if message.document:
+            arquivo = await client.download_media(message.document, file=str(LISTS_DIR))
+            if arquivo:
+                nome_arquivo = os.path.basename(arquivo)
+                logger.info(f"📥 Downloaded: {nome_arquivo}")
+                
+                # Lê conteúdo do arquivo
+                with open(arquivo, 'r', encoding='utf-8', errors='ignore') as f:
+                    conteudo = f.read()
+                
+                # Envia para webhook
+                await enviar_para_webhook(nome_arquivo, conteudo)
+    
+    except Exception as e:
+        logger.error(f"❌ Erro ao processar mensagem: {e}")
+
+@client.on(events.NewMessage(chats=config.canais_origem))
+async def handler(event):
+    """Handler para novas mensagens"""
+    await processar_mensagem(event.message)
+
+async def main():
+    """Função principal"""
+    await client.start()
+    logger.info(f"🚀 Bot iniciado. Monitorando canal: {config.canais_origem}")
+    logger.info(f"🔗 Webhook: {config.webhook_url if config.webhook_url else 'NÃO CONFIGURADO'}")
+    await client.run_until_disconnected()
 
 if __name__ == '__main__':
     iniciar_bot()
