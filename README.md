@@ -16,6 +16,30 @@ Bot Telegram que monitora canais, detecta e testa automaticamente listas IPTV, s
 - ✅ Logs estruturados
 - ✅ Containerizado e pronto para produção
 
+## 🔑 Obter Credenciais Telegram
+
+### API_ID e API_HASH
+1. Acesse https://my.telegram.org/apps
+2. Faça login com sua conta Telegram
+3. Clique em "Create new application"
+4. Preencha os dados solicitados
+5. Copie **API ID** e **API Hash**
+
+### Bot Token (Recomendado para Produção)
+1. Abra o Telegram e procure por **@BotFather**
+2. Envie `/newbot`
+3. Escolha um nome e username para seu bot
+4. Copie o **token** fornecido (formato: `123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11`)
+5. Adicione seu bot aos canais que deseja monitorar
+
+**Vantagens do Bot Token**:
+- ✅ Autenticação automática (sem interação)
+- ✅ Funciona em ambientes containerizados
+- ✅ Mais seguro (não requer código de verificação)
+- ✅ Ideal para produção no Portainer
+
+---
+
 ## 🐳 Instalação via Docker
 
 ### 1. Clonar ou copiar os arquivos
@@ -39,8 +63,15 @@ Edite o arquivo `.env` com suas credenciais:
 API_ID=123456789
 API_HASH=abcdefghijklmnopqrstuvwxyz1234567890
 
+# Autenticação: Use BOT_TOKEN para automático (recomendado para produção)
+# Obtenha em: https://t.me/BotFather
+BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+
 # Canais para monitorar
 CANAL_ORIGEM=meu_canal, outro_canal
+
+# Webhook N8N
+WEBHOOK_URL=https://n8n.conekta.tech/webhook/whebhook1
 ```
 
 ### 3. Construir imagem Docker
@@ -127,6 +158,7 @@ Você precisará das variáveis de ambiente definidas. Portainer usará a opçã
 |----------|------------|--------|-----------|
 | `API_ID` | ✅ Sim | - | ID da API Telegram (obtenha em https://my.telegram.org/apps) |
 | `API_HASH` | ✅ Sim | - | Hash da API Telegram |
+| `BOT_TOKEN` | ❌ Não* | - | Token do bot para autenticação (obtém automaticamente) |
 | `CANAL_ORIGEM` | ✅ Sim | - | Canais a monitorar (separados por vírgula) |
 | `TESTAR_AUTOMATICO` | ❌ Não | `true` | Testar links M3U automaticamente |
 | `PALAVRAS_CHAVE` | ❌ Não | - | Palavras para filtrar (separadas por vírgula) |
@@ -135,6 +167,8 @@ Você precisará das variáveis de ambiente definidas. Portainer usará a opçã
 | `IPTV_TIMEOUT` | ❌ Não | `15` | Timeout para testes IPTV (segundos) |
 | `WEBHOOK_URL` | ❌ Não | - | URL webhook N8N para notificações |
 | `WEBHOOK_TIMEOUT` | ❌ Não | `30` | Timeout para webhook (segundos) |
+
+**\*Bot Token**: Se configurado, o bot usa autenticação automática (sem interação). Se não definido, pode usar autenticação por telefone (apenas para desenvolvimento local).
 
 ## 📂 Estrutura de Arquivos
 

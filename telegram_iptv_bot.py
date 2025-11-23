@@ -43,19 +43,31 @@ logger = logging.getLogger(__name__)
 try:
     API_ID = int(os.getenv('API_ID'))
     API_HASH = os.getenv('API_HASH')
+    BOT_TOKEN = os.getenv('BOT_TOKEN')  # Token do bot
     CANAL_ORIGEM = os.getenv('CANAL_ORIGEM')
     WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
     WEBHOOK_TIMEOUT = int(os.getenv('WEBHOOK_TIMEOUT', '30'))
     
-    if not all([API_ID, API_HASH, CANAL_ORIGEM]):
-        raise ValueError('API_ID, API_HASH e CANAL_ORIGEM são obrigatórios')
+    # Verificar se tem API_ID/HASH ou BOT_TOKEN
+    if BOT_TOKEN:
+        logger.info('🤖 Usando Bot Token')
+    elif not all([API_ID, API_HASH, CANAL_ORIGEM]):
+        raise ValueError('Configure: BOT_TOKEN ou (API_ID + API_HASH)')
+    
+    if not CANAL_ORIGEM:
+        raise ValueError('CANAL_ORIGEM é obrigatório')
     
 except Exception as e:
     logger.error(f'❌ Erro de configuração: {e}')
     exit(1)
 
 # Cliente Telegram
-client = TelegramClient(str(SESSIONS_DIR / 'bot_session'), API_ID, API_HASH)
+if BOT_TOKEN:
+    # Usar bot token (mais seguro, sem login interativo)
+    client = TelegramClient(str(SESSIONS_DIR / 'bot_session'), API_ID, API_HASH)
+else:
+    # Usar API ID/Hash (requer login manual)
+    client = TelegramClient(str(SESSIONS_DIR / 'bot_session'), API_ID, API_HASH)
 
 
 async def enviar_webhook(nome_arquivo, conteudo):
@@ -135,12 +147,27 @@ async def handler(event):
 
 async def main():
     """Inicia o bot"""
-    await client.start()
-    logger.info(f'🚀 Bot iniciado')
-    logger.info(f'📢 Canal: {CANAL_ORIGEM}')
-    logger.info(f'🔗 Webhook: {WEBHOOK_URL if WEBHOOK_URL else "Não configurado"}')
-    logger.info(f'💾 Dados: {LISTS_DIR}')
-    await client.run_until_disconnected()
+    try:
+        if BOT_TOKEN:
+            # Login com bot token (automático, sem interação)
+            await client.start(bot_token=BOT_TOKEN)
+            logger.info('🤖 Bot autenticado com sucesso')
+        else:
+            # Login com telefone (requer interação)
+            await client.start(
+                phone=lambda: input('📱 Telefone (ou bot token): '),
+                password=lambda: input('🔐 Senha 2FA (se houver): ')
+            )
+            logger.info('👤 Usuário autenticado com sucesso')
+        
+        logger.info(f'🚀 Bot iniciado')
+        logger.info(f'📢 Canal: {CANAL_ORIGEM}')
+        logger.info(f'🔗 Webhook: {WEBHOOK_URL if WEBHOOK_URL else "Não configurado"}')
+        logger.info(f'💾 Dados: {LISTS_DIR}')
+        await client.run_until_disconnected()
+    except Exception as e:
+        logger.error(f'❌ Erro ao iniciar: {e}')
+        exit(1)
 
 
 if __name__ == '__main__':
@@ -148,6 +175,11 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info('⏹️ Bot parado')
+    except EOFError:
+        logger.error('❌ Nenhuma entrada de terminal disponível')
+        logger.error('Use: docker exec -it telegram-iptv-bot bash')
+        logger.error('Depois: python telegram_iptv_bot.py')
+        exit(1)
     except Exception as e:
         logger.error(f'❌ Erro fatal: {e}')
         exit(1)
