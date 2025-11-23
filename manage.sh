@@ -13,6 +13,18 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Detectar comando docker-compose (novo: docker compose vs antigo: docker-compose)
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+elif docker compose version &> /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+else
+    echo -e "${RED}❌ docker-compose não encontrado!${NC}"
+    echo "Instale com: sudo apt-get install docker-compose"
+    echo "Ou use a versão nova: sudo apt-get install docker.io"
+    exit 1
+fi
+
 # Função para exibir ajuda
 show_help() {
     echo -e "${BLUE}Gerenciamento do Bot Telegram IPTV${NC}"
@@ -35,7 +47,7 @@ show_help() {
 # Função para iniciar
 start_container() {
     echo -e "${BLUE}Iniciando container...${NC}"
-    docker-compose up -d
+    $DOCKER_COMPOSE up -d
     echo -e "${GREEN}✓ Container iniciado!${NC}"
     sleep 2
     status_container
@@ -44,14 +56,14 @@ start_container() {
 # Função para parar
 stop_container() {
     echo -e "${BLUE}Parando container...${NC}"
-    docker-compose down
+    $DOCKER_COMPOSE down
     echo -e "${GREEN}✓ Container parado!${NC}"
 }
 
 # Função para reiniciar
 restart_container() {
     echo -e "${BLUE}Reiniciando container...${NC}"
-    docker-compose restart
+    $DOCKER_COMPOSE restart
     echo -e "${GREEN}✓ Container reiniciado!${NC}"
 }
 
@@ -87,7 +99,7 @@ clean() {
     echo
     if [[ $REPLY =~ ^[Ss]$ ]]; then
         echo -e "${BLUE}Removendo container...${NC}"
-        docker-compose down -v
+        $DOCKER_COMPOSE down -v
         echo -e "${GREEN}✓ Limpeza completa!${NC}"
     else
         echo "Cancelado."
